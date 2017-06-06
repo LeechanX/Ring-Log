@@ -148,6 +148,18 @@ RingLog使用变量`_sys_acc_sec`记录写上一条日志时，系统经过的�
 >传统同步日志`sync log`使得echo Server QPS从19.32w万/s降低至`11.42万/s`，损失了`40.89%`
 >`RingLog`使得echo Server QPS从19.32w万/s降低至`16.72万/s`，损失了`13.46%`
 
+### **USAGE**
+
+
+>LOG_INIT("logdir", "myapp");
+>LOG_ERROR("my name is %s, my number is %d", "leechanx", 3);
+
+最后会在目录logdir下生成myapp.yyyy-mm-dd.pid.log.[n]文件名的日志
+
+日志格式为：
+>[ERROR][yyyy-mm-dd hh:mm:ss.ms][pid]code.cc:line_no(function_name): my name is leechanx, my number is 3
+
+
 ### **TODO**
 - 日志本身缓存大小的配置
 - 程序正常退出、异常退出，此时在buffer中缓存的日志会丢失

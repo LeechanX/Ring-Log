@@ -59,23 +59,29 @@ Ring Log有两个指针：
 
 >在大量日志产生的场景下，Ring Log有一定的内存拓展能力；实际使用中，为防止Ring Log缓冲区无限拓展，会限制内存总大小，当超过此内存限制时不再申请新`cell_buffer`而是丢弃日志
 
-#### 图解各场景
+#### **图解各场景**
 初始时候，`Consumer Ptr`与`Producer Ptr`均指向同一个空闲`cell_buffer1`
+
 ![Alt text](pictures/init.png)
 
 然后生产者在1s内写满了`cell_buffer1`，`Producer Ptr`前进，通知后台消费者线程持久化
+
 ![Alt text](pictures/step1.png)
 
 消费者持久化完成，重置`cell_buffer1`，`Consumer Ptr`前进一位，发现指向的`cell_buffer2`未满，等待
+
 ![Alt text](pictures/step1.5.png)
 
 超过一秒后`cell_buffer2`虽有日志，但依然未满：消费者将此`cell_buffer2`标记为`FULL`强行持久化，并将`Producer Ptr`前进一位到`cell_buffer3`
+
 ![Alt text](pictures/step2.png)
 
 消费者在`cell_buffer2`的持久化上延迟过大，结果生产者都写满`cell_buffer3\4\5\6`，已经正在写`cell_buffer1`了
+
 ![Alt text](pictures/step3.png)
 
 生产者写满写`cell_buffer1`，发现下一位`cell_buffer2`是`FULL`，则拓展换冲区，新增`new_cell_buffer`
+
 ![Alt text](pictures/step4.png)
 
 

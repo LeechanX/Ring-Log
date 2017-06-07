@@ -40,6 +40,7 @@ struct utc_timer
         hour  = cur_tm.tm_hour;
         min  = cur_tm.tm_min;
         sec  = cur_tm.tm_sec;
+        reset_utc_fmt();
     }
 
     uint64_t get_curr_time(int* p_msec = NULL)

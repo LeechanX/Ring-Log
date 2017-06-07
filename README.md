@@ -151,6 +151,7 @@ RingLog使用变量`_sys_acc_sec`记录写上一条日志时，系统经过的�
 
 
 >LOG_INIT("logdir", "myapp");
+>
 >LOG_ERROR("my name is %s, my number is %d", "leechanx", 3);
 
 最后会在目录logdir下生成myapp.yyyy-mm-dd.pid.log.[n]文件名的日志

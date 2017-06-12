@@ -251,6 +251,16 @@ void* be_thdo(void* args);
         } \
     } while (0)
 
+#define LOG_NORMAL(fmt, args...) \
+    do \
+    { \
+        if (g_log.get_level() >= INFO) \
+        { \
+            g_log.try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
+                    gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
+        } \
+    } while (0)
+
 #define LOG_WARN(fmt, args...) \
     do \
     { \
@@ -272,6 +282,73 @@ void* be_thdo(void* args);
     } while (0)
 
 #define LOG_FATAL(fmt, args...) \
+    do \
+    { \
+        g_log.try_append("[FATAL]", "[%u]%s:%d(%s): " fmt "\n", \
+            gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
+    } while (0)
+
+#define TRACE(fmt, args...) \
+    do \
+    { \
+        if (g_log.get_level() >= TRACE) \
+        { \
+            g_log.try_append("[TRACE]", "[%u]%s:%d(%s): " fmt "\n", \
+                    gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
+        } \
+    } while (0)
+
+#define DEBUG(fmt, args...) \
+    do \
+    { \
+        if (g_log.get_level() >= DEBUG) \
+        { \
+            g_log.try_append("[DEBUG]", "[%u]%s:%d(%s): " fmt "\n", \
+                    gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
+        } \
+    } while (0)
+
+#define INFO(fmt, args...) \
+    do \
+    { \
+        if (g_log.get_level() >= INFO) \
+        { \
+            g_log.try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
+                    gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
+        } \
+    } while (0)
+
+#define NORMAL(fmt, args...) \
+    do \
+    { \
+        if (g_log.get_level() >= INFO) \
+        { \
+            g_log.try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
+                    gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
+        } \
+    } while (0)
+
+#define WARN(fmt, args...) \
+    do \
+    { \
+        if (g_log.get_level() >= WARN) \
+        { \
+            g_log.try_append("[WARN]", "[%u]%s:%d(%s): " fmt "\n", \
+                    gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
+        } \
+    } while (0)
+
+#define ERROR(fmt, args...) \
+    do \
+    { \
+        if (g_log.get_level() >= ERROR) \
+        { \
+            g_log.try_append("[ERROR]", "[%u]%s:%d(%s): " fmt "\n", \
+                gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
+        } \
+    } while (0)
+
+#define FATAL(fmt, args...) \
     do \
     { \
         g_log.try_append("[FATAL]", "[%u]%s:%d(%s): " fmt "\n", \

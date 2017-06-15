@@ -1,6 +1,6 @@
 TARGET=lib/libringlog.a
 CXX=g++
-CFLAGS=-g -O2 -Wall
+CFLAGS=-g -O2 -Wall -fPIC
 SRC=src
 INC=-Isrc
 OBJS = $(addsuffix .o, $(basename $(wildcard $(SRC)/*.cc)))

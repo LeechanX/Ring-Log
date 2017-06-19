@@ -165,11 +165,19 @@ private:
 class ring_log
 {
 public:
-    ring_log(int buff_cnt = 5, uint32_t one_buff_len = 100*1024*1024);
+    //for thread-safe singleton
+    static ring_log* ins()
+    {
+        pthread_once(&_once, ring_log::init);
+        return _ins;
+    }
 
-    ~ring_log() {} //because ring_log is global instance, so don't need destructor
+    static void init()
+    {
+        while (!_ins) _ins = new ring_log();
+    }
 
-    void init(const char* log_dir, const char* prog_name, int level);
+    void init_path(const char* log_dir, const char* prog_name, int level);
 
     int get_level() const { return _level; }
 
@@ -178,21 +186,19 @@ public:
     void try_append(const char* lvl, const char* format, ...);
 
 private:
+    ring_log();
+
     bool decis_file(int year, int mon, int day);
 
     ring_log(const ring_log&);
-    ring_log& operator=(const ring_log&);
+    const ring_log& operator=(const ring_log&);
 
-    uint32_t _one_buff_len;
     int _buff_cnt;
 
     cell_buffer* _curr_buf;
     cell_buffer* _prst_buf;
 
     cell_buffer* last_buf;
-
-    static pthread_mutex_t _mutex;
-    static pthread_cond_t _cond;
 
     FILE* _fp;
     pid_t _pid;
@@ -205,16 +211,37 @@ private:
     uint64_t _lst_lts;//last can't log error time(s) if value != 0, log error happened last time
     
     utc_timer _tm;
+
+    static pthread_mutex_t _mutex;
+    static pthread_cond_t _cond;
+
+    static uint32_t _one_buff_len;
+
+    //singleton
+    static ring_log* _ins;
+    static pthread_once_t _once;
 };
 
-extern ring_log g_log;
-
 void* be_thdo(void* args);
+
+#define LOG_MEM_SET(mem_lmt) \
+    do \
+    { \
+        if (mem_lmt < 90 * 1024 * 1024) \
+        { \
+            mem_lmt = 90 * 1024 * 1024; \
+        } \
+        else if (mem_lmt > 1024 * 1024 * 1024) \
+        { \
+            mem_lmt = 1024 * 1024 * 1024; \
+        } \
+        ring_log::_one_buff_len = mem_lmt; \
+    } while (0)
 
 #define LOG_INIT(log_dir, prog_name, level) \
     do \
     { \
-        g_log.init(log_dir, prog_name, level); \
+        ring_log::ins()->init_path(log_dir, prog_name, level); \
         pthread_t tid; \
         pthread_create(&tid, NULL, be_thdo, NULL); \
         pthread_detach(tid); \
@@ -224,9 +251,9 @@ void* be_thdo(void* args);
 #define LOG_TRACE(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= TRACE) \
+        if (ring_log::ins()->get_level() >= TRACE) \
         { \
-            g_log.try_append("[TRACE]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[TRACE]", "[%u]%s:%d(%s): " fmt "\n", \
                     gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -234,9 +261,9 @@ void* be_thdo(void* args);
 #define LOG_DEBUG(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= DEBUG) \
+        if (ring_log::ins()->get_level() >= DEBUG) \
         { \
-            g_log.try_append("[DEBUG]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[DEBUG]", "[%u]%s:%d(%s): " fmt "\n", \
                     gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -244,9 +271,9 @@ void* be_thdo(void* args);
 #define LOG_INFO(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= INFO) \
+        if (ring_log::ins()->get_level() >= INFO) \
         { \
-            g_log.try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
                     gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -254,9 +281,9 @@ void* be_thdo(void* args);
 #define LOG_NORMAL(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= INFO) \
+        if (ring_log::ins()->get_level() >= INFO) \
         { \
-            g_log.try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
                     gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -264,9 +291,9 @@ void* be_thdo(void* args);
 #define LOG_WARN(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= WARN) \
+        if (ring_log::ins()->get_level() >= WARN) \
         { \
-            g_log.try_append("[WARN]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[WARN]", "[%u]%s:%d(%s): " fmt "\n", \
                     gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -274,9 +301,9 @@ void* be_thdo(void* args);
 #define LOG_ERROR(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= ERROR) \
+        if (ring_log::ins()->get_level() >= ERROR) \
         { \
-            g_log.try_append("[ERROR]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[ERROR]", "[%u]%s:%d(%s): " fmt "\n", \
                 gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -284,16 +311,16 @@ void* be_thdo(void* args);
 #define LOG_FATAL(fmt, args...) \
     do \
     { \
-        g_log.try_append("[FATAL]", "[%u]%s:%d(%s): " fmt "\n", \
+        ring_log::ins()->try_append("[FATAL]", "[%u]%s:%d(%s): " fmt "\n", \
             gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
     } while (0)
 
 #define TRACE(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= TRACE) \
+        if (ring_log::ins()->get_level() >= TRACE) \
         { \
-            g_log.try_append("[TRACE]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[TRACE]", "[%u]%s:%d(%s): " fmt "\n", \
                     gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -301,9 +328,9 @@ void* be_thdo(void* args);
 #define DEBUG(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= DEBUG) \
+        if (ring_log::ins()->get_level() >= DEBUG) \
         { \
-            g_log.try_append("[DEBUG]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[DEBUG]", "[%u]%s:%d(%s): " fmt "\n", \
                     gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -311,9 +338,9 @@ void* be_thdo(void* args);
 #define INFO(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= INFO) \
+        if (ring_log::ins()->get_level() >= INFO) \
         { \
-            g_log.try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
                     gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -321,9 +348,9 @@ void* be_thdo(void* args);
 #define NORMAL(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= INFO) \
+        if (ring_log::ins()->get_level() >= INFO) \
         { \
-            g_log.try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[INFO]", "[%u]%s:%d(%s): " fmt "\n", \
                     gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -331,9 +358,9 @@ void* be_thdo(void* args);
 #define WARN(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= WARN) \
+        if (ring_log::ins()->get_level() >= WARN) \
         { \
-            g_log.try_append("[WARN]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[WARN]", "[%u]%s:%d(%s): " fmt "\n", \
                     gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -341,9 +368,9 @@ void* be_thdo(void* args);
 #define ERROR(fmt, args...) \
     do \
     { \
-        if (g_log.get_level() >= ERROR) \
+        if (ring_log::ins()->get_level() >= ERROR) \
         { \
-            g_log.try_append("[ERROR]", "[%u]%s:%d(%s): " fmt "\n", \
+            ring_log::ins()->try_append("[ERROR]", "[%u]%s:%d(%s): " fmt "\n", \
                 gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
         } \
     } while (0)
@@ -351,7 +378,7 @@ void* be_thdo(void* args);
 #define FATAL(fmt, args...) \
     do \
     { \
-        g_log.try_append("[FATAL]", "[%u]%s:%d(%s): " fmt "\n", \
+        ring_log::ins()->try_append("[FATAL]", "[%u]%s:%d(%s): " fmt "\n", \
             gettid(), __FILE__, __LINE__, __FUNCTION__, ##args); \
     } while (0)
 

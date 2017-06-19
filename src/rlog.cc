@@ -18,9 +18,15 @@ pid_t gettid()
     return syscall(__NR_gettid);
 }
 
-ring_log::ring_log(int buff_cnt, uint32_t one_buff_len):
-    _one_buff_len(one_buff_len),
-    _buff_cnt(buff_cnt),
+pthread_mutex_t ring_log::_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t ring_log::_cond = PTHREAD_COND_INITIALIZER;
+
+ring_log* ring_log::_ins = NULL;
+pthread_once_t ring_log::_once = PTHREAD_ONCE_INIT;
+uint32_t ring_log::_one_buff_len = 100*1024*1024;
+
+ring_log::ring_log():
+    _buff_cnt(3),
     _curr_buf(NULL),
     _prst_buf(NULL),
     _fp(NULL),
@@ -33,7 +39,7 @@ ring_log::ring_log(int buff_cnt, uint32_t one_buff_len):
     if (_buff_cnt < 2)
         _buff_cnt = 2;
     //create double linked list
-    cell_buffer* head = new cell_buffer(one_buff_len);
+    cell_buffer* head = new cell_buffer(_one_buff_len);
     if (!head)
     {
         fprintf(stderr, "no space to allocate cell_buffer\n");
@@ -43,7 +49,7 @@ ring_log::ring_log(int buff_cnt, uint32_t one_buff_len):
     cell_buffer* prev = head;
     for (int i = 1;i < _buff_cnt; ++i)
     {
-        current = new cell_buffer(one_buff_len);
+        current = new cell_buffer(_one_buff_len);
         if (!current)
         {
             fprintf(stderr, "no space to allocate cell_buffer\n");
@@ -62,13 +68,10 @@ ring_log::ring_log(int buff_cnt, uint32_t one_buff_len):
     _pid = getpid();
 }
 
-void ring_log::init(const char* log_dir, const char* prog_name, int level)
+void ring_log::init_path(const char* log_dir, const char* prog_name, int level)
 {
-    if (getpid() != gettid())
-    {
-        fprintf(stderr, "only can call init() in main thread\n");
-        return ;
-    }
+    pthread_mutex_lock(&_mutex);
+
     strncpy(_log_dir, log_dir, 512);
     //name format:  name_year-mon-day-t[tid].log.n
     strncpy(_prog_name, prog_name, 128);
@@ -88,6 +91,8 @@ void ring_log::init(const char* log_dir, const char* prog_name, int level)
     if (level < FATAL)
         level = FATAL;
     _level = level;
+
+    pthread_mutex_unlock(&_mutex);
 }
 
 void ring_log::persist()
@@ -223,9 +228,10 @@ bool ring_log::decis_file(int year, int mon, int day)
     //TODO: 是根据日志消息的时间写时间？还是自主写时间？  I select 自主写时间
     if (!_env_ok)
     {
-        if (!_fp)
-            _fp = fopen("/dev/null", "w");
-        return _fp == NULL;
+        if (_fp)
+            fclose(_fp);
+        _fp = NULL;
+        return false;
     }
     if (!_fp)
     {
@@ -269,13 +275,8 @@ bool ring_log::decis_file(int year, int mon, int day)
     return _fp != NULL;
 }
 
-pthread_mutex_t ring_log::_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t ring_log::_cond = PTHREAD_COND_INITIALIZER;
-
-ring_log g_log;
-
 void* be_thdo(void* args)
 {
-    g_log.persist();
+    ring_log::ins()->persist();
     return NULL;
 }

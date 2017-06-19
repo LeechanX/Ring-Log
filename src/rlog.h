@@ -72,9 +72,9 @@ struct utc_timer
             }
             else
             {
-		//reformat utc format only sec
-		reset_utc_fmt_sec();
-	    }
+                //reformat utc format only sec
+                reset_utc_fmt_sec();
+            }
         }
         return tv.tv_sec;
     }

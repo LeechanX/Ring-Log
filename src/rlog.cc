@@ -6,16 +6,40 @@
 #include <stdarg.h>//va_list
 #include <sys/stat.h>//mkdir
 #include <sys/syscall.h>//system call
+#include <sys/shm.h>//for shmxxx
+#include <sys/types.h>//for ipc key
 
 #define MEM_USE_LIMIT (3u * 1024 * 1024 * 1024)//3GB
 #define LOG_USE_LIMIT (1u * 1024 * 1024 * 1024)//1GB
 #define LOG_LEN_LIMIT (4 * 1024)//4K
+#define SHM_KEY_ID_SEQ 12356
 #define RELOG_THRESOLD 5
 #define BUFF_WAIT_TIME 1
 
 pid_t gettid()
 {
     return syscall(__NR_gettid);
+}
+
+cell_buffer* create_cell_buffer(key_t shm_key, uint32_t total_len)
+{
+    //return a cell_buffer from shm
+    int shmid = shmget(shm_key, sizeof(cell_buffer) + total_len, IPC_CREAT | IPC_EXCL | 0666);
+    if (shmid == -1 && errno == EEXIST)
+    {
+        shmid = shmget(shm_key, sizeof(cell_buffer) + total_len, 0666);
+    }
+    if (shmid == -1)
+    {
+        perror("when shmget:");
+        return NULL;
+    }
+    cell_buffer* buf = (cell_buffer*)shmat(shmid, 0, 0);
+    *buf = cell_buffer(shmid, total_len);
+
+    buf->_data = (char*)buf + sizeof(cell_buffer);
+
+    return buf;
 }
 
 pthread_mutex_t ring_log::_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -25,9 +49,43 @@ ring_log* ring_log::_ins = NULL;
 pthread_once_t ring_log::_once = PTHREAD_ONCE_INIT;
 uint32_t ring_log::_one_buff_len = 100*1024*1024;
 
+int get_main_shm()
+{
+    char exec_path[4096];
+    int count = readlink("/proc/self/exe", exec_path, 4096);
+    if (count < 0 || count > 4096)
+        return -1;
+    key_t shm_key = ftok(exec_path, SHM_KEY_ID_SEQ);
+    if (shm_key < 0)
+        return -1;
+    int shmid = shmget(shm_key, sizeof(int*), IPC_CREAT | IPC_EXCL | 0666);
+    if (shmid == -1 && errno == EEXIST)
+    {
+        shmid = shmget(shm_key, sizeof(int*), 0666);
+        //clear old cell_buffer shm here
+        int* p_cf_shmid = (int*)shmat(shmid, 0, 0);
+        int head_cf_shmid = *p_cf_shmid;
+        int curr_cf_shmid = head_cf_shmid;
+        int next_cf_shmid;
+        do
+        {
+            cell_buffer* cf = (cell_buffer*)shmat(curr_cf_shmid, 0, 0);
+            next_cf_shmid = cf->next_shmid;
+            shmdt((void*)cf);
+            shmctl(curr_cf_shmid, IPC_RMID, NULL);
+            curr_cf_shmid = next_cf_shmid;
+        }
+        while (head_cf_shmid != curr_cf_shmid);
+    }
+    if (shmid == -1)
+        perror("when shmget:");
+    return shmid;
+}
+
 ring_log::ring_log():
     _buff_cnt(3),
     _curr_buf(NULL),
+    _curr_shmid(NULL), 
     _prst_buf(NULL),
     _fp(NULL),
     _log_cnt(0),
@@ -39,7 +97,11 @@ ring_log::ring_log():
     if (_buff_cnt < 2)
         _buff_cnt = 2;
     //create double linked list
-    cell_buffer* head = new cell_buffer(_one_buff_len);
+
+    int shmid = get_main_shm();
+    _curr_shmid = (int*)shmat(shmid, 0, 0);
+
+    cell_buffer* head = create_cell_buffer(SHM_KEY_ID_SEQ, _one_buff_len);
     if (!head)
     {
         fprintf(stderr, "no space to allocate cell_buffer\n");
@@ -49,20 +111,25 @@ ring_log::ring_log():
     cell_buffer* prev = head;
     for (int i = 1;i < _buff_cnt; ++i)
     {
-        current = new cell_buffer(_one_buff_len);
+        current = create_cell_buffer(SHM_KEY_ID_SEQ + i, _one_buff_len);
         if (!current)
         {
             fprintf(stderr, "no space to allocate cell_buffer\n");
             exit(1);
         }
         current->prev = prev;
+        current->prev_shmid = prev->shmid;
         prev->next = current;
+        prev->next_shmid = current->shmid;
         prev = current;
     }
     prev->next = head;
+    prev->next_shmid = head->shmid;
     head->prev = prev;
+    head->prev_shmid = prev->shmid;
 
     _curr_buf = head;
+    *_curr_shmid = _curr_buf->shmid;
     _prst_buf = head;
 
     _pid = getpid();
@@ -123,6 +190,7 @@ void ring_log::persist()
             assert(_curr_buf == _prst_buf);//to test
             _curr_buf->status = cell_buffer::FULL;
             _curr_buf = _curr_buf->next;
+            *_curr_shmid = _curr_buf->shmid;
         }
 
         int year = _tm.year, mon = _tm.mon, day = _tm.day;
@@ -190,23 +258,30 @@ void ring_log::try_append(const char* lvl, const char* format, ...)
                 {
                     fprintf(stderr, "no more log space can use\n");
                     _curr_buf = next_buf;
+                    *_curr_shmid = _curr_buf->shmid;
                     _lst_lts = curr_sec;
                 }
                 else
                 {
-                    cell_buffer* new_buffer = new cell_buffer(_one_buff_len);
+                    cell_buffer* new_buffer = create_cell_buffer(SHM_KEY_ID_SEQ + _buff_cnt, _one_buff_len);
                     _buff_cnt += 1;
                     new_buffer->prev = _curr_buf;
+                    new_buffer->prev_shmid = _curr_buf->shmid;
                     _curr_buf->next = new_buffer;
+                    _curr_buf->next_shmid = new_buffer->shmid;
                     new_buffer->next = next_buf;
+                    new_buffer->next_shmid = next_buf->shmid;
                     next_buf->prev = new_buffer;
+                    next_buf->prev_shmid = new_buffer->shmid;
                     _curr_buf = new_buffer;
+                    *_curr_shmid = _curr_buf->shmid;
                 }
             }
             else
             {
                 //next buffer is free, we can use it
                 _curr_buf = next_buf;
+                *_curr_shmid = _curr_buf->shmid;
             }
             if (!_lst_lts)
                 _curr_buf->append(log_line, len);

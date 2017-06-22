@@ -106,20 +106,16 @@ public:
         FULL
     };
 
-    cell_buffer(uint32_t len): 
+    cell_buffer(int shm_id, uint32_t len): 
     status(FREE), 
+    shmid(shm_id), 
     prev(NULL), 
+    prev_shmid(-1), 
     next(NULL), 
+    next_shmid(-1), 
     _total_len(len), 
-    _used_len(0)
-    {
-        _data = new char[len];
-        if (!_data)
-        {
-            fprintf(stderr, "no space to allocate _data\n");
-            exit(1);
-        }
-    }
+    _used_len(0),
+    _data(NULL) { }
 
     uint32_t avail_len() const { return _total_len - _used_len; }
 
@@ -150,15 +146,17 @@ public:
 
     buffer_status status;
 
+    int shmid;
+
     cell_buffer* prev;
+    int prev_shmid;
     cell_buffer* next;
+    int next_shmid;
 
 private:
-    cell_buffer(const cell_buffer&);
-    cell_buffer& operator=(const cell_buffer&);
-
     uint32_t _total_len;
     uint32_t _used_len;
+public:
     char* _data;
 };
 
@@ -196,6 +194,7 @@ private:
     int _buff_cnt;
 
     cell_buffer* _curr_buf;
+    int* _curr_shmid;
     cell_buffer* _prst_buf;
 
     cell_buffer* last_buf;

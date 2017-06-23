@@ -61,6 +61,7 @@ int get_main_shm()
     int shmid = shmget(shm_key, sizeof(int*), IPC_CREAT | IPC_EXCL | 0666);
     if (shmid == -1 && errno == EEXIST)
     {
+        printf("exist!\n");
         shmid = shmget(shm_key, sizeof(int*), 0666);
         //clear old cell_buffer shm here
         int* p_cf_shmid = (int*)shmat(shmid, 0, 0);
@@ -73,6 +74,7 @@ int get_main_shm()
             next_cf_shmid = cf->next_shmid;
             shmdt((void*)cf);
             shmctl(curr_cf_shmid, IPC_RMID, NULL);
+            printf("clear!\n");
             curr_cf_shmid = next_cf_shmid;
         }
         while (head_cf_shmid != curr_cf_shmid);
@@ -85,8 +87,8 @@ int get_main_shm()
 ring_log::ring_log():
     _buff_cnt(3),
     _curr_buf(NULL),
-    _curr_shmid(NULL), 
     _prst_buf(NULL),
+    _prst_shmid(NULL), 
     _fp(NULL),
     _log_cnt(0),
     _env_ok(false),
@@ -97,9 +99,10 @@ ring_log::ring_log():
     if (_buff_cnt < 2)
         _buff_cnt = 2;
     //create double linked list
-
     int shmid = get_main_shm();
-    _curr_shmid = (int*)shmat(shmid, 0, 0);
+    if (shmid == -1)
+        exit(1);
+    _prst_shmid = (int*)shmat(shmid, 0, 0);
 
     cell_buffer* head = create_cell_buffer(SHM_KEY_ID_SEQ, _one_buff_len);
     if (!head)
@@ -129,8 +132,8 @@ ring_log::ring_log():
     head->prev_shmid = prev->shmid;
 
     _curr_buf = head;
-    *_curr_shmid = _curr_buf->shmid;
     _prst_buf = head;
+    *_prst_shmid = _prst_buf->shmid;
 
     _pid = getpid();
 }
@@ -190,7 +193,6 @@ void ring_log::persist()
             assert(_curr_buf == _prst_buf);//to test
             _curr_buf->status = cell_buffer::FULL;
             _curr_buf = _curr_buf->next;
-            *_curr_shmid = _curr_buf->shmid;
         }
 
         int year = _tm.year, mon = _tm.mon, day = _tm.day;
@@ -206,6 +208,7 @@ void ring_log::persist()
         pthread_mutex_lock(&_mutex);
         _prst_buf->clear();
         _prst_buf = _prst_buf->next;
+        *_prst_shmid = _prst_buf->shmid;
         pthread_mutex_unlock(&_mutex);
     }
 }
@@ -258,7 +261,6 @@ void ring_log::try_append(const char* lvl, const char* format, ...)
                 {
                     fprintf(stderr, "no more log space can use\n");
                     _curr_buf = next_buf;
-                    *_curr_shmid = _curr_buf->shmid;
                     _lst_lts = curr_sec;
                 }
                 else
@@ -274,14 +276,12 @@ void ring_log::try_append(const char* lvl, const char* format, ...)
                     next_buf->prev = new_buffer;
                     next_buf->prev_shmid = new_buffer->shmid;
                     _curr_buf = new_buffer;
-                    *_curr_shmid = _curr_buf->shmid;
                 }
             }
             else
             {
                 //next buffer is free, we can use it
                 _curr_buf = next_buf;
-                *_curr_shmid = _curr_buf->shmid;
             }
             if (!_lst_lts)
                 _curr_buf->append(log_line, len);

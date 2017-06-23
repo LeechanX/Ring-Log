@@ -137,9 +137,12 @@ public:
 
     void persist(FILE* fp)
     {
+        printf("going to write %u\n", _used_len);
+        printf("my _data %p\n", _data);
         uint32_t wt_len = fwrite(_data, 1, _used_len, fp);
         if (wt_len != _used_len)
         {
+            perror("fuck");
             fprintf(stderr, "write log to disk error, wt_len %u\n", wt_len);
         }
     }
@@ -194,8 +197,8 @@ private:
     int _buff_cnt;
 
     cell_buffer* _curr_buf;
-    int* _curr_shmid;
     cell_buffer* _prst_buf;
+    int* _prst_shmid;
 
     cell_buffer* last_buf;
 

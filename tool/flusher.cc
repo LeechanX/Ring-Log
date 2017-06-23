@@ -11,7 +11,7 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        printf("./log_flusher exefilepath\n");
+        printf("./flusher exefilepath\n");
         return -1;
     }
     char* exec_path = realpath(argv[1], NULL);

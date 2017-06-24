@@ -61,7 +61,6 @@ int get_main_shm()
     int shmid = shmget(shm_key, sizeof(int*), IPC_CREAT | IPC_EXCL | 0666);
     if (shmid == -1 && errno == EEXIST)
     {
-        printf("exist!\n");
         shmid = shmget(shm_key, sizeof(int*), 0666);
         //clear old cell_buffer shm here
         int* p_cf_shmid = (int*)shmat(shmid, 0, 0);
@@ -74,7 +73,6 @@ int get_main_shm()
             next_cf_shmid = cf->next_shmid;
             shmdt((void*)cf);
             shmctl(curr_cf_shmid, IPC_RMID, NULL);
-            printf("clear!\n");
             curr_cf_shmid = next_cf_shmid;
         }
         while (head_cf_shmid != curr_cf_shmid);

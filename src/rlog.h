@@ -137,12 +137,9 @@ public:
 
     void persist(FILE* fp)
     {
-        printf("going to write %u\n", _used_len);
-        printf("my _data %p\n", _data);
         uint32_t wt_len = fwrite(_data, 1, _used_len, fp);
         if (wt_len != _used_len)
         {
-            perror("fuck");
             fprintf(stderr, "write log to disk error, wt_len %u\n", wt_len);
         }
     }
@@ -186,6 +183,8 @@ public:
 
     void try_append(const char* lvl, const char* format, ...);
 
+    static uint32_t _one_buff_len;
+
 private:
     ring_log();
 
@@ -217,8 +216,6 @@ private:
     static pthread_mutex_t _mutex;
     static pthread_cond_t _cond;
 
-    static uint32_t _one_buff_len;
-
     //singleton
     static ring_log* _ins;
     static pthread_once_t _once;
@@ -226,16 +223,17 @@ private:
 
 void* be_thdo(void* args);
 
-#define LOG_MEM_SET(mem_lmt) \
+#define LOG_MEM_SET(ml) \
     do \
     { \
-        if (mem_lmt < 90 * 1024 * 1024) \
+        unsigned mem_lmt = ml; \
+        if (mem_lmt < 30 * 1024 * 1024) \
         { \
-            mem_lmt = 90 * 1024 * 1024; \
+            mem_lmt = 30 * 1024 * 1024; \
         } \
-        else if (mem_lmt > 1024 * 1024 * 1024) \
+        else if (mem_lmt > 100 * 1024 * 1024) \
         { \
-            mem_lmt = 1024 * 1024 * 1024; \
+            mem_lmt = 100 * 1024 * 1024; \
         } \
         ring_log::_one_buff_len = mem_lmt; \
     } while (0)

@@ -159,6 +159,18 @@ RingLog使用变量`_sys_acc_sec`记录写上一条日志时，系统经过的�
 日志格式为：
 >[ERROR][yyyy-mm-dd hh:mm:ss.ms][pid]code.cc:line_no(function_name): my name is leechanx, my number is 3
 
+### **导出尚未持久化的日志**
+遭遇coredump等程序退出情景，尚未来得急刷写到磁盘的日志内容依然残留在共享内存中
+这时可以使用tool/目录下的flusher工具导出日志
+
+假设使用日志的可执行程序为：xxx
+
+则：
+>./flusher -f xxx -d
+
+其中-d是可选的，表示是否在导出后删除共享内存
+日志会导出到当前目录的leaveLog.log文件中
+
 
 ### **TODO**
 - 第N天23:59:59秒产生的日志有时会被刷写到第N+1天的日志文件中

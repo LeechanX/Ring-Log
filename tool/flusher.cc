@@ -63,22 +63,41 @@ int main(int argc, char** argv)
     int head_cf_shmid = *p_cf_shmid;
     int curr_cf_shmid = head_cf_shmid;
     int next_cf_shmid;
-    FILE* fp = fopen("leaveLog.log", "w");
+    bool have_data = false;
+    FILE* fp = NULL;
     do
     {
         cell_buffer* cf = (cell_buffer*)shmat(curr_cf_shmid, 0, 0);
         cf->_data = (char*)cf + sizeof(cell_buffer);
-        if (cf->empty())
-            break;
-        cf->persist(fp);
+        if (!cf->empty())
+        {
+            have_data = true;
+            if (!fp) fp = fopen("leaveLog.log", "w");
+            cf->persist(fp);
+        }
         next_cf_shmid = cf->next_shmid;
-        shmdt((void*)cf);
-        shmctl(curr_cf_shmid, IPC_RMID, NULL);
+        if (if_del)
+        {
+            shmdt((void*)cf);
+            shmctl(curr_cf_shmid, IPC_RMID, NULL);
+        }
         curr_cf_shmid = next_cf_shmid;
     }
     while (head_cf_shmid != curr_cf_shmid);
-    fclose(fp);
-    shmdt((void*)p_cf_shmid);
-    shmctl(shmid, IPC_RMID, NULL);
+    if (fp)
+        fclose(fp);
+    if (if_del)
+    {
+        shmdt((void*)p_cf_shmid);
+        shmctl(shmid, IPC_RMID, NULL);
+    }
+    if (have_data)
+    {
+        printf("Left data persist to leaveLog.log\n");
+    }
+    else
+    {
+        printf("No extra data left in memory\n");
+    }
     return 0;
 }

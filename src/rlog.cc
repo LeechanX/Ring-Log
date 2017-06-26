@@ -70,6 +70,11 @@ int get_main_shm()
         do
         {
             cell_buffer* cf = (cell_buffer*)shmat(curr_cf_shmid, 0, 0);
+            if (!cf)
+            {
+                perror("shmat");
+                break;
+            }
             next_cf_shmid = cf->next_shmid;
             shmdt((void*)cf);
             shmctl(curr_cf_shmid, IPC_RMID, NULL);

@@ -162,7 +162,6 @@ void ring_log::try_append(const char* lvl, const char* format, ...)
     va_end(arg_ptr);
 
     uint32_t len = prev_len + main_len;
-    assert(len == prev_len + main_len);
 
     _lst_lts = 0;
     bool tell_back = false;

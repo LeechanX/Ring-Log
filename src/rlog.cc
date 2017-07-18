@@ -231,11 +231,11 @@ void ring_log::try_append(const char* lvl, const char* format, ...)
     va_start(arg_ptr, format);
 
     //TO OPTIMIZE IN THE FUTURE: performance too low here!
-    vsnprintf(log_line + prev_len, LOG_LEN_LIMIT - prev_len, format, arg_ptr);
+    int main_len = vsnprintf(log_line + prev_len, LOG_LEN_LIMIT - prev_len, format, arg_ptr);
 
     va_end(arg_ptr);
 
-    uint32_t len = strlen(log_line);
+    uint32_t len = prev_len + main_len;
 
     _lst_lts = 0;
     bool tell_back = false;

@@ -23,7 +23,7 @@ pthread_cond_t ring_log::_cond = PTHREAD_COND_INITIALIZER;
 
 ring_log* ring_log::_ins = NULL;
 pthread_once_t ring_log::_once = PTHREAD_ONCE_INIT;
-uint32_t ring_log::_one_buff_len = 100*1024*1024;
+uint32_t ring_log::_one_buff_len = 30*1024*1024;//30MB
 
 ring_log::ring_log():
     _buff_cnt(3),
@@ -36,8 +36,6 @@ ring_log::ring_log():
     _lst_lts(0),
     _tm()
 {
-    if (_buff_cnt < 2)
-        _buff_cnt = 2;
     //create double linked list
     cell_buffer* head = new cell_buffer(_one_buff_len);
     if (!head)

@@ -228,8 +228,8 @@ bool ring_log::decis_file(int year, int mon, int day)
     {
         if (_fp)
             fclose(_fp);
-        _fp = NULL;
-        return false;
+        _fp = fopen("/dev/null", "w");
+        return _fp != NULL;
     }
     if (!_fp)
     {

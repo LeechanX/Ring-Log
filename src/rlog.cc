@@ -95,53 +95,56 @@ void ring_log::init_path(const char* log_dir, const char* prog_name, int level)
 
 void ring_log::persist()
 {
-    while (true)
-    {
-        //check if _prst_buf need to be persist
-        pthread_mutex_lock(&_mutex);
-        if (_prst_buf->status == cell_buffer::FREE)
-        {
-            struct timespec tsp;
-            struct timeval now;
-            gettimeofday(&now, NULL);
-            tsp.tv_sec = now.tv_sec;
-            tsp.tv_nsec = now.tv_usec * 1000;//nanoseconds
-            tsp.tv_sec += BUFF_WAIT_TIME;//wait for 1 seconds
-            pthread_cond_timedwait(&_cond, &_mutex, &tsp);
-        }
-        if (_prst_buf->empty())
-        {
-            //give up, go to next turn
+    // the consumer thread(single)
+    while (true) {
+        // check if _prst_buf need to be persist, without lock first
+        if(_prst_buf->status == cell_buffer::FREE) {
+            pthread_mutex_lock(&_mutex);
+            if (_prst_buf->status == cell_buffer::FREE) {
+                // else it is full, no need to wait
+                // all the 3 if following is invalid
+                struct timespec tsp;
+                struct timeval now;
+                gettimeofday(&now, NULL);
+                tsp.tv_sec = now.tv_sec;
+                tsp.tv_nsec = now.tv_usec * 1000;  // nanoseconds
+                tsp.tv_sec += BUFF_WAIT_TIME;  // wait for 1 seconds
+                pthread_cond_timedwait(&_cond, &_mutex, &tsp);
+            }
+            // thread wake up with lock accquired
+            if (_prst_buf->empty()) {
+                // give up, go to next turn
+                pthread_mutex_unlock(&_mutex);
+                continue;
+            }
+            // or loot this buffer
+            if (_prst_buf->status == cell_buffer::FREE) {
+                assert(_curr_buf == _prst_buf);  // to test
+                auto temp = _curr_buf;
+                _curr_buf = _curr_buf->next;
+                temp->status = cell_buffer::FULL;
+            }
             pthread_mutex_unlock(&_mutex);
-            continue;
         }
-
-        if (_prst_buf->status == cell_buffer::FREE)
-        {
-            assert(_curr_buf == _prst_buf);//to test
-            _curr_buf->status = cell_buffer::FULL;
-            _curr_buf = _curr_buf->next;
+        else {
+            // FULL tag, this buffer can be persist immediately
         }
-
         int year = _tm.year, mon = _tm.mon, day = _tm.day;
-        pthread_mutex_unlock(&_mutex);
-
-        //decision which file to write
         if (!decis_file(year, mon, day))
             continue;
         //write
         _prst_buf->persist(_fp);
         fflush(_fp);
-
-        pthread_mutex_lock(&_mutex);
-        _prst_buf->clear();
+        // jump to next without lock, jump first, then set flags
+        auto temp = _prst_buf;
         _prst_buf = _prst_buf->next;
-        pthread_mutex_unlock(&_mutex);
+        temp->clear();  // len=0, status=FREE
     }
 }
 
 void ring_log::try_append(const char* lvl, const char* format, ...)
 {
+    // the producer threads(multiple)
     int ms;
     uint64_t curr_sec = _tm.get_curr_time(&ms);
     if (_lst_lts && curr_sec - _lst_lts < RELOG_THRESOLD)
@@ -175,10 +178,9 @@ void ring_log::try_append(const char* lvl, const char* format, ...)
         //2. _curr_buf->status = cell_buffer::FULL
         if (_curr_buf->status == cell_buffer::FREE)
         {
-            _curr_buf->status = cell_buffer::FULL;//set to FULL
+            // FREE but no more space
+            // _curr_buf->status = cell_buffer::FULL;//set to FULL
             cell_buffer* next_buf = _curr_buf->next;
-            //tell backend thread
-             tell_back = true;
 
             //it suggest that this buffer is under the persist job
             if (next_buf->status == cell_buffer::FULL)
@@ -187,11 +189,15 @@ void ring_log::try_append(const char* lvl, const char* format, ...)
                 if (_one_buff_len * (_buff_cnt + 1) > MEM_USE_LIMIT)
                 {
                     fprintf(stderr, "no more log space can use\n");
-                    _curr_buf = next_buf;
+                    // if no more buffer can be allocated, just stay in this buffer, and keep the buffer status FREE
+                    // _curr_buf = next_buf;
                     _lst_lts = curr_sec;
                 }
                 else
                 {
+                    tell_back = true;
+                    // set FULL after done
+                    auto temp = _curr_buf;
                     cell_buffer* new_buffer = new cell_buffer(_one_buff_len);
                     _buff_cnt += 1;
                     new_buffer->prev = _curr_buf;
@@ -199,19 +205,24 @@ void ring_log::try_append(const char* lvl, const char* format, ...)
                     new_buffer->next = next_buf;
                     next_buf->prev = new_buffer;
                     _curr_buf = new_buffer;
+                    temp->status = cell_buffer::FULL;
                 }
             }
             else
             {
+                tell_back = true;
                 //next buffer is free, we can use it
+                auto temp = _curr_buf;
                 _curr_buf = next_buf;
+                temp->status = cell_buffer::FULL;
             }
             if (!_lst_lts)
                 _curr_buf->append(log_line, len);
         }
         else//_curr_buf->status == cell_buffer::FULL, assert persist is on here too!
         {
-            _lst_lts = curr_sec;
+            // _cur_buf will never be on a full buffer
+            assert(0);
         }
     }
     pthread_mutex_unlock(&_mutex);

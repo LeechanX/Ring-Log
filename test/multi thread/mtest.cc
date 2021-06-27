@@ -21,13 +21,14 @@ void* thdo(void* args)
 
 int main(int argc, char** argv)
 {
+    int nThreads = 20;
     LOG_INIT("log", "myname", 3);
     uint64_t start_ts = get_current_millis();
-    pthread_t tids[5];
-    for (int i = 0;i < 5; ++i)
+    pthread_t tids[nThreads];
+    for (int i = 0;i < nThreads; ++i)
     	pthread_create(&tids[i], NULL, thdo, NULL);
 
-    for (int i = 0;i < 5; ++i)
+    for (int i = 0;i < nThreads; ++i)
 	pthread_join(tids[i], NULL);
     uint64_t end_ts = get_current_millis();
     printf("time use %lums\n", end_ts - start_ts);
